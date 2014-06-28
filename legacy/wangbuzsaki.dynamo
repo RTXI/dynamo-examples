@@ -1,0 +1,99 @@
+/*
+ Wang-Buzsaki model
+
+*/
+
+SYSTEM Wang_Buzsaki;
+
+PARAMETER  C_m  = 1e-6    "F/cm^2";
+
+// Maximum possible sodium conductance
+PARAMETER  g_Na = 35.0e-3  "S/cm^2";
+// Maximum possible potassium conductance
+PARAMETER  g_K  = 9.0e-3   "S/cm^2";
+// Maximum possible leakage conductance
+PARAMETER  g_L  = 0.1e-3    "S/cm^2";
+
+// Sodium membrane potential
+PARAMETER  E_Na = 55.0e-3	 "V";
+// Potassium membrane potential
+PARAMETER  E_K  = -90.0e-3	 "V";
+// Leakage membrane potential
+PARAMETER  E_L  = -60.0e-3	 "V";
+
+PARAMETER  phi  = 5;         "scale factor";
+
+// Adaptation current I_z, induced only during spike like IAHP
+PARAMETER g_z   = 1.0e-3    "S/cm^2";
+PARAMETER a     = 0.005e3  "V^-1";
+PARAMETER b     = -5.0e-3   "V";
+PARAMETER k     = 2.0e-3    "V";
+
+// Applied current I_app
+PARAMETER I_app = 2.0e-6      "A/cm^2";
+
+// Synaptic current I_syn
+PARAMETER gsyn   = 0.5e-3      "S/cm^2";
+PARAMETER ks     = 6.25e3   "s^-1";
+PARAMETER tausyn = 1e-3     "s";
+PARAMETER esyn   = -75e-3   "V"; 
+STATE V          = -65.0e-3;
+
+// Na state variables
+STATE h = 0.9;
+STATE n = 0.1;
+
+STATE z = 0.1;
+STATE s = 0.1;
+
+// Ionic currents across the membrane 
+STATE FUNCTION I_Na      "Na+ current:  I_Na (V, m, h)";
+STATE FUNCTION alpha_m   "alpha_m(V)";
+STATE FUNCTION beta_m    "beta_m(V)";
+STATE FUNCTION alpha_h   "alpha_h(V)";
+STATE FUNCTION beta_h    "beta_h(V)";
+STATE FUNCTION m_inf		 "m_inf(alpha_m,beta_m)";
+STATE FUNCTION I_K       "K+ current:   I_K (V, n)";
+STATE FUNCTION alpha_n   "alpha_n(V)";
+STATE FUNCTION beta_n    "beta_n(V)";
+
+STATE FUNCTION I_L       "Leak current: I_L (V)";
+
+STATE FUNCTION I_z       "Adaptation current: I_z (V, z)";
+
+STATE FUNCTION I_syn     "Synaptic current: I_syn (Vin1,s)";
+
+STATE FUNCTION T         "T: for I_syn";
+
+// This will have the value of V (total membrane potential), and will
+// be output to the data acquisition board.
+EXTERNAL OUTPUT Vout1;
+EXTERNAL INPUT Vin1;
+
+TIME t;
+
+AT TIME t:
+
+alpha_m  = ( -0.1*(V*1000+35) ) / ( exp( -0.1*(V*1000+35) ) -1 ) ;
+beta_m   = 4 * exp(-(V*1000 + 60)/18);
+alpha_h  = 0.07 * exp(-(V*1000 + 58)/20);
+beta_h   = 1/( exp( -0.1*(V*1000+28) ) +1 );
+alpha_n  = ( -0.01*(V*1000+34) ) / (exp (-0.1*(V*1000+34) ) -1 );
+beta_n   = 0.125 * exp(-(V*1000 + 44)/80);
+m_inf		 = alpha_m/(alpha_m+beta_m);
+
+I_Na = g_Na * cube(m_inf) * h * (V - E_Na);
+I_K  = g_K * sqr(sqr (n)) * (V - E_K);
+I_L	 = g_L * (V - E_L);
+I_z  = g_z * z * (V - E_K);
+T    = 1/(1+exp(-Vin1/2));
+I_syn = gsyn*s*(Vin1-esyn);
+
+/* Integration of the four state variables. */
+d(V) = - (I_Na + I_K + I_L + I_z + I_syn - I_app) / C_m;
+d(h) = phi*(alpha_h * (1 - h) - beta_h * h);
+d(n) = phi*(alpha_n * (1 - n) - beta_n * n);
+d(z) = a*(1/(1+exp((b-V)/k))-z);
+d(s) = ks*T*(1-s)-s/tausyn;
+
+Vout1 = V;
